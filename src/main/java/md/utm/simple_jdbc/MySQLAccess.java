@@ -14,9 +14,11 @@ import org.apache.log4j.Logger;
 public class MySQLAccess {
 	private Connection connection = null;
 	private Statement statement = null;
-	private PreparedStatement preparedStatement = null;
+	private final PreparedStatement preparedStatement = null;
 	private ResultSet resultSet = null;
 	private static Logger logger = null;
+	private PreparedStatement insertPreparedStatement = null;
+	private PreparedStatement deletePreparedStatement = null;
 	static {
 		// This will load the MySQL driver, each DB has its own driver
 		logger = Logger.getLogger(MySQLAccess.class);
@@ -41,6 +43,26 @@ public class MySQLAccess {
 		return connection;
 	}
 
+	private PreparedStatement getInsertPreparedStatement() throws SQLException {
+		if (insertPreparedStatement == null) {
+			// PreparedStatements can use variables and are more efficient
+			insertPreparedStatement = getConnection()
+					.prepareStatement(
+							"insert into  university_jdbc.person values (default, ?, ?, ?, ? )");
+		}
+		return insertPreparedStatement;
+	}
+
+	private PreparedStatement getDeletePreparedStatement() throws SQLException {
+		if (deletePreparedStatement == null) {
+			// PreparedStatements can use variables and are more efficient
+			deletePreparedStatement = getConnection()
+					.prepareStatement(
+							"delete from university_jdbc.person where person_name= ? and person_surname= ?; ");
+		}
+		return deletePreparedStatement;
+	}
+
 	public Statement getStatement() {
 		if (statement == null) {
 			try {
@@ -52,74 +74,70 @@ public class MySQLAccess {
 		return statement;
 	}
 
-	public void insertRow(String name, String surname, int yearOfBirth,
+	/**
+	 * Insert a row in the database
+	 * 
+	 * @param name
+	 * @param surname
+	 * @param yearOfBirth
+	 * @param isStudent
+	 * @return how many rows were updated
+	 */
+	public int insertRow(String name, String surname, int yearOfBirth,
 			boolean isStudent) {
+		int updatedRows = -1;
 		try {
-			// PreparedStatements can use variables and are more efficient
-			preparedStatement = getConnection()
-					.prepareStatement(
-							"insert into  university_jdbc.person values (default, ?, ?, ?, ? )");
 			// Parameters start with 1
-			preparedStatement.setString(1, name);
-			preparedStatement.setString(2, surname);
-			preparedStatement.setInt(3, yearOfBirth);
-			preparedStatement.setBoolean(4, isStudent);
-			preparedStatement.executeUpdate();
-			logger.info(name + " " + surname + " was inserted successfully");
+			getInsertPreparedStatement().setString(1, name);
+			getInsertPreparedStatement().setString(2, surname);
+			getInsertPreparedStatement().setInt(3, yearOfBirth);
+			getInsertPreparedStatement().setBoolean(4, isStudent);
+			updatedRows = getInsertPreparedStatement().executeUpdate();
 		} catch (Exception e) {
 			logger.error("Statement was not executed: ", e);
 		}
+		return updatedRows;
 	}
 
-	public void removeFromDataBase(String name, String surname) {
+	/**
+	 * Remove line from database in case of the found object
+	 * 
+	 * @param name
+	 * @param surname
+	 * @return number of updated rows
+	 */
+	public int removeFromDataBase(String name, String surname) {
+		int updatetRows = -1;
 		try {
-			preparedStatement = getConnection()
-					.prepareStatement(
-							"delete from university_jdbc.person where person_name= ? and person_surname= ?; ");
-			preparedStatement.setString(1, name);
-			preparedStatement.setString(2, surname);
-			preparedStatement.executeUpdate();
-			logger.info(name + " " + surname + " was deleted successfully");
+			getDeletePreparedStatement().setString(1, name);
+			getDeletePreparedStatement().setString(2, surname);
+			updatetRows = getDeletePreparedStatement().executeUpdate();
 		} catch (SQLException e) {
 			logger.error("Removin from table failed: ", e);
 		}
-
+		return updatetRows;
 	}
 
-	public void populateDatabase() {
+	/**
+	 * Find a person but using simple statement, not prepared
+	 * 
+	 * @param personName
+	 * @param personSurname
+	 * @return list of persons
+	 */
+	public List<Person> findPerson(String personName, String personSurname) {
+		// Result set get the result of the SQL query
+		List<Person> persons = new ArrayList<Person>();
+		String queryString = "select * from university_jdbc.person where person.person_name='%s' and person.person_surname='%s' ";
 		try {
-			// Setup the connection with the DB
-
-			// Statements allow to issue SQL queries to the database
-
-			insertRow("Ion", "Malai", 1992, true);
-			insertRow("Andre", "Stanchevici", 1981, false);
-			insertRow("Dan", "Bejenar", 1993, true);
-
-			readFromDataBase();
 
 			resultSet = getStatement().executeQuery(
-					"select * from university_jdbc.person");
-			writeMetaData(resultSet);
-		} catch (Exception e) {
-			logger.error("Statement was not executed dut following error: ", e);
-		} finally {
-			close();
+					String.format(queryString, personName, personSurname));
+			persons = writeResultSet(resultSet);
+		} catch (SQLException e) {
+			logger.error("Reading all lines from table failed: ", e);
 		}
-
-	}
-
-	private void writeMetaData(ResultSet resultSet) throws SQLException {
-		// Now get some meta data from the database
-		// Result set get the result of the SQL query
-
-		logger.info("The columns in the table are: ");
-
-		System.out.println("Table: " + resultSet.getMetaData().getTableName(1));
-		for (int i = 1; i <= resultSet.getMetaData().getColumnCount(); i++) {
-			System.out.println("Column " + i + " "
-					+ resultSet.getMetaData().getColumnName(i));
-		}
+		return persons;
 	}
 
 	public List<Person> readFromDataBase() {
@@ -138,8 +156,8 @@ public class MySQLAccess {
 	private List<Person> writeResultSet(ResultSet resultSet)
 			throws SQLException {
 		// ResultSet is initially before the first data set
+		String result = "Name: %s, Surname: %s, Year of birth: %s, Is student: %s";
 		List<Person> persons = new ArrayList<Person>();
-		System.out.println();
 		Person person;
 		while (resultSet.next()) {
 			// It is possible to get the columns via name
@@ -150,29 +168,37 @@ public class MySQLAccess {
 			String surname = resultSet.getString("person_surname");
 			int yearOfBirth = resultSet.getInt("person_year_of_birth");
 			boolean isStudent = resultSet.getBoolean("person_is_student");
-			System.out.print("Name: " + name);
-			System.out.print(", Surname: " + surname);
-			System.out.print(", Year of birth: " + yearOfBirth);
-			System.out.print(", Is student: " + isStudent);
 			person = new Person(name, surname, yearOfBirth, isStudent);
 			persons.add(person);
+			logger.info(String.format(result, name, surname, yearOfBirth,
+					isStudent));
 		}
-		System.out.println();
 		return persons;
 	}
 
-	public static void main(String[] args) {
-		MySQLAccess mySQLAccess = new MySQLAccess();
-		// mySQLAccess.readDataBase();
-		mySQLAccess.readFromDataBase();
-		mySQLAccess.removeFromDataBase("Andre", "Stanchevici");
-		mySQLAccess.readFromDataBase();
-
-		mySQLAccess.close();
+	/**
+	 * Show the meta data of the table
+	 * 
+	 * @param info
+	 * @throws SQLException
+	 */
+	public void showResultSetMetadata(ResultSet info) throws SQLException {
+		// Now get some meta data from the database
+		// Result set get the result of the SQL query
+		logger.info("The columns in the table are: ");
+		System.out.println("Table: " + resultSet.getMetaData().getTableName(1));
+		for (int i = 1; i <= resultSet.getMetaData().getColumnCount(); i++) {
+			logger.info("Column " + i + " "
+					+ resultSet.getMetaData().getColumnName(i));
+		}
 	}
 
-	// You need to close the resultSet
-	private void close() {
+	/**
+	 * You need to close the resultSet, call it after each end of the
+	 * {@link MySQLAccess} class
+	 * 
+	 */
+	public void close() {
 		try {
 			if (resultSet != null && !resultSet.isClosed()) {
 				resultSet.close();
