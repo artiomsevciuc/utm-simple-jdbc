@@ -4,7 +4,11 @@ public class Person {
 	private String name;
 	private String surname;
 	private int yearOfBirth;
-	private boolean isStudent;
+	private boolean student;
+
+	public Person() {
+
+	}
 
 	public Person(String name, String surname, int yearOfBirth,
 			boolean isStudent) {
@@ -12,7 +16,7 @@ public class Person {
 		this.name = name;
 		this.surname = surname;
 		this.yearOfBirth = yearOfBirth;
-		this.isStudent = isStudent;
+		this.student = isStudent;
 	}
 
 	public String getName() {
@@ -40,11 +44,11 @@ public class Person {
 	}
 
 	public boolean isStudent() {
-		return isStudent;
+		return student;
 	}
 
 	public void setStudent(boolean isStudent) {
-		this.isStudent = isStudent;
+		this.student = isStudent;
 	}
 
 }
